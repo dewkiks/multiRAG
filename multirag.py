@@ -7,7 +7,12 @@ from langchain.prompts import PromptTemplate
 from langchain.chains import StuffDocumentsChain
 from langchain.chains.llm import LLMChain
 
-client = genai.Client(api_key="AIzaSyDEs0tSTJx-lhcS5-fAEnk1GKzu8Oy3jKk")
+from dotenv import load_dotenv
+load_dotenv()
+import os
+key = os.environ["GEMINI_API_KEY"]
+
+client = genai.Client(key="GEMINI_API_KEY")
 chat = client.chats.create(model="gemini-2.0-flash")
 
 class TextBookLoader:
