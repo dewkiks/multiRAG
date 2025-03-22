@@ -1,19 +1,29 @@
 from unstructured.partition.pdf import partition_pdf
 import base64
 from google import genai
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.document_loaders import WebBaseLoader
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langchain.chains import StuffDocumentsChain
 from langchain.chains.llm import LLMChain
-
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.prompts import PromptTemplate
+import time
+from langchain.schema.output_parser import StrOutputParser
+from google.api_core.exceptions import ResourceExhausted
 from dotenv import load_dotenv
 load_dotenv()
 import os
-key = os.environ["GEMINI_API_KEY"]
+key = os.getenv("GEMINI_API_KEY")
 
-client = genai.Client(key="GEMINI_API_KEY")
-chat = client.chats.create(model="gemini-2.0-flash")
+llm = ChatGoogleGenerativeAI(
+        model="gemini-2.0-flash",
+        temperature=0,
+        max_tokens=None,
+        timeout=None,
+        max_retries=2,
+        api_key=os.getenv("GEMINI_API_KEY")
+        # other params...
+        )
 
 class TextBookLoader:
     def __init__(self, path):
@@ -55,8 +65,19 @@ class TextBookLoader:
         # print(imagesb64[0])
         #IMAGES AND TEXT EXTRACTION WORKS, TABLES NEED FIXING
         self.summarize(texts, tables, imagesb64)
-    
+
+    def rate_limit_control(self, func):
+        for i in range(5):
+            try:
+                return(func)
+            except ResourceExhausted as e:
+                if i == 5-1:
+                    raise e
+                backoff = (2**i)
+                time.sleep(backoff)
+
     def summarize(self, texts, tables, imagesb64):
+        
         prompt_text = """
         You are an assistant tasked with summarizing tables and text.
         Give a concise summary of the table or text.
@@ -65,10 +86,46 @@ class TextBookLoader:
         Do not start your message by saying "Here is a summary" or anything like that.
         Just give the summary as it is.
 
-        Table or text chunk: {element}
+        Table or text chunk: {texts}
         """
-        
-        
 
+        prompt = PromptTemplate(input_variables=["texts"], template=prompt_text)
+
+        #TEXT SUMMARIZATION
+        llm_chain = {"texts": lambda x: x} | prompt | llm | StrOutputParser() 
+        text_summaries=llm_chain.batch(texts, {"max_concurrency":3})
+        print(text_summaries)
+
+    def image_summarize(imagesb64):
+        #IMAGE SUMMARIZATION
+        image_prompt="""Describe image in detail. For context the image is part of a research paper explaining the transformers
+                  architecture. Be specific about graphs, such as bar plots."""
+        messages = [
+            (
+                "user",
+                [
+                    {"type": "text", "text": image_prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": "data:image/jpeg;base64,{imagesb64}"},
+                    },
+                ],
+            )
+        ]
+        
+        img_prompt = ChatPromptTemplate.from_messages(messages)
+        chain= img_prompt | llm | StrOutputParser()
+        image_summary = []
+        for img in imagesb64:
+            time.sleep(1)  # Add a delay between requests
+            try:
+                result = chain.invoke(img)
+                image_summary.append(result)
+            except Exception as e:
+                print(f"Error processing image: {e}")
+                image_summary.append("Failed to process image")
+        print("--------------------------IMAGE SUMMARYYYYYYYYYYYYYYYYYYYYYYYYY-------------------")
+        print(image_summary)
+                
 # tt = TextBookLoader(r"Data\sem1_debug.pdf")
 tt = TextBookLoader(r"Data\transformer.pdf")
