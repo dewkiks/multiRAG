@@ -67,17 +67,7 @@ class TextBookLoader:
         self.summarize(texts, tables)
         self.image_summarize(imagesb64)
 
-    def rate_limit_control(self, func):
-        for i in range(5):
-            try:
-                return(func)
-            except ResourceExhausted as e:
-                if i == 5-1:
-                    raise e
-                backoff = (2**i)
-                time.sleep(backoff)
-
-    def summarize(self, texts, tables, imagesb64):
+    def summarize(self, texts, tables):
         
         prompt_text = """
         You are an assistant tasked with summarizing tables and text.
