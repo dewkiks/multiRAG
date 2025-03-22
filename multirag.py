@@ -115,7 +115,6 @@ class Multirag:
                 print(f"Error processing image: {e}")
                 image_summary.append("Failed to process image")
         #print(image_summary)
-
         self.vectorize(texts, text_summaries, imagesb64, image_summary)
 
     def vectorize(self, texts, text_summaries, imagesb64, image_summary):
@@ -128,7 +127,6 @@ class Multirag:
             embedding_function=GoogleGenerativeAIEmbeddings(
                 google_api_key=os.getenv("GEMINI_API_KEY"),
                 model="models/embedding-001"),
-            persist_directory="./DB"
         )
 
         # The storage layer for the parent documents
