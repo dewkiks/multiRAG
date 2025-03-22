@@ -64,7 +64,8 @@ class TextBookLoader:
         # print(texts[0])
         # print(imagesb64[0])
         #IMAGES AND TEXT EXTRACTION WORKS, TABLES NEED FIXING
-        self.summarize(texts, tables, imagesb64)
+        self.summarize(texts, tables)
+        self.image_summarize(imagesb64)
 
     def rate_limit_control(self, func):
         for i in range(5):
@@ -96,7 +97,7 @@ class TextBookLoader:
         text_summaries=llm_chain.batch(texts, {"max_concurrency":3})
         print(text_summaries)
 
-    def image_summarize(imagesb64):
+    def image_summarize(self, imagesb64):
         #IMAGE SUMMARIZATION
         image_prompt="""Describe image in detail. For context the image is part of a research paper explaining the transformers
                   architecture. Be specific about graphs, such as bar plots."""
