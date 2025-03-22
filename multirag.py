@@ -1,19 +1,20 @@
 from unstructured.partition.pdf import partition_pdf
-import base64
-from google import genai
-from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.chains import StuffDocumentsChain
-from langchain.chains.llm import LLMChain
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+import chromadb
+import uuid
+from langchain_chroma import Chroma
+from langchain.storage import InMemoryStore
+from langchain.schema.document import Document
+from langchain.retrievers.multi_vector import MultiVectorRetriever
 from langchain.prompts import PromptTemplate
 import time
 from langchain.schema.output_parser import StrOutputParser
-from google.api_core.exceptions import ResourceExhausted
 from dotenv import load_dotenv
 load_dotenv()
 import os
-key = os.getenv("GEMINI_API_KEY")
 
 llm = ChatGoogleGenerativeAI(
         model="gemini-2.0-flash",
@@ -22,10 +23,9 @@ llm = ChatGoogleGenerativeAI(
         timeout=None,
         max_retries=2,
         api_key=os.getenv("GEMINI_API_KEY")
-        # other params...
         )
 
-class TextBookLoader:
+class Multirag:
     def __init__(self, path):
         self.pdf_path = path
         chunks = partition_pdf(
@@ -64,10 +64,9 @@ class TextBookLoader:
         # print(texts[0])
         # print(imagesb64[0])
         #IMAGES AND TEXT EXTRACTION WORKS, TABLES NEED FIXING
-        self.summarize(texts, tables)
-        self.image_summarize(imagesb64)
+        self.summarize(texts, tables, imagesb64)
 
-    def summarize(self, texts, tables):
+    def summarize(self, texts, tables, imagesb64):
         
         prompt_text = """
         You are an assistant tasked with summarizing tables and text.
@@ -85,9 +84,8 @@ class TextBookLoader:
         #TEXT SUMMARIZATION
         llm_chain = {"texts": lambda x: x} | prompt | llm | StrOutputParser() 
         text_summaries=llm_chain.batch(texts, {"max_concurrency":3})
-        print(text_summaries)
+        #print(text_summaries)
 
-    def image_summarize(self, imagesb64):
         #IMAGE SUMMARIZATION
         image_prompt="""Describe image in detail. For context the image is part of a research paper explaining the transformers
                   architecture. Be specific about graphs, such as bar plots."""
@@ -103,20 +101,65 @@ class TextBookLoader:
                 ],
             )
         ]
-        
+       
         img_prompt = ChatPromptTemplate.from_messages(messages)
         chain= img_prompt | llm | StrOutputParser()
+
         image_summary = []
         for img in imagesb64:
-            time.sleep(1)  # Add a delay between requests
+            time.sleep(1)  #delay between requests to address rate limit
             try:
                 result = chain.invoke(img)
                 image_summary.append(result)
             except Exception as e:
                 print(f"Error processing image: {e}")
                 image_summary.append("Failed to process image")
-        print("--------------------------IMAGE SUMMARYYYYYYYYYYYYYYYYYYYYYYYYY-------------------")
-        print(image_summary)
-                
+        #print(image_summary)
+
+        self.vectorize(texts, text_summaries, imagesb64, image_summary)
+
+    def vectorize(self, texts, text_summaries, imagesb64, image_summary):
+        persistent_client = chromadb.PersistentClient()
+        collection = persistent_client.get_or_create_collection("link_collection")
+
+        vectorstore = Chroma(
+            client=persistent_client,
+            collection_name="link_collection",
+            embedding_function=GoogleGenerativeAIEmbeddings(
+                google_api_key=os.getenv("GEMINI_API_KEY"),
+                model="models/embedding-001"),
+            persist_directory="./DB"
+        )
+
+        # The storage layer for the parent documents
+        store = InMemoryStore()
+        id_key = "doc_id"
+
+        # The retriever (empty to start)
+        retriever = MultiVectorRetriever(
+            vectorstore=vectorstore,
+            docstore=store,
+            id_key=id_key,
+        )
+
+        doc_ids = [str(uuid.uuid4()) for _ in texts]
+        summary_texts = [
+            Document(page_content=summary, metadata={id_key: doc_ids[i]}) for i, summary in enumerate(text_summaries)
+        ]
+        retriever.vectorstore.add_documents(summary_texts)
+        retriever.docstore.mset(list(zip(doc_ids, texts)))
+
+        # Add image summaries
+        img_ids = [str(uuid.uuid4()) for _ in imagesb64]
+        summary_img = [
+            Document(page_content=summary, metadata={id_key: img_ids[i]}) for i, summary in enumerate(image_summary)
+        ]
+        retriever.vectorstore.add_documents(summary_img)
+        retriever.docstore.mset(list(zip(img_ids, imagesb64)))
+
+        docs = retriever.invoke(" What are the types of transformers")
+        for doc in docs:
+            print(str(doc) + "\n\n" + "-" * 80)
+
 # tt = TextBookLoader(r"Data\sem1_debug.pdf")
-tt = TextBookLoader(r"Data\transformer.pdf")
+tt = Multirag(r"Data\transformer.pdf")
