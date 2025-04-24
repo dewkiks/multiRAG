@@ -1,4 +1,3 @@
-```markdown
 # 📚 MultiRAG PDF Summarizer and Retriever
 
 This project processes academic or research PDFs using LangChain, Google Gemini, and ChromaDB. It performs intelligent chunking, summarizes both **text and images**, and stores them for **retrieval-based querying**. Useful for building AI-powered study tools, semantic search systems, or revision companions.
