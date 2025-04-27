@@ -82,14 +82,6 @@ This will:
 
 ---
 
-## 💡 To Do
-
-- [ ] Add better table extraction with OCR  
-- [ ] Support citation metadata  
-- [ ] Add web frontend for interactive querying
-
----
-
 ## 🧑‍💻 Author
 
 Made with ❤️ by dewkiks
